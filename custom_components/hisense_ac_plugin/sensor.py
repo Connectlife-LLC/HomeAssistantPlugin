@@ -653,6 +653,33 @@ SENSOR_TYPES = {
         "state_class": None,
         "unit": None,
         "description": "外机EEPROM故障"
+    },
+    "w_m_remaining_time": {
+        "key": StatusKey.W_M_REMAINING_TIME,
+        "name": "Remaining time",
+        "icon": "mdi:washing-machine",
+        "device_class": SensorDeviceClass.DURATION,
+        "state_class": SensorStateClass.MEASUREMENT, 
+        "unit": "min",  
+        "description": "Remaining time"
+    },
+    "w_m_current_state": {
+        "key": StatusKey.W_M_CURRENT_STATE,
+        "name": "Washing machine state",
+        "icon": "mdi:washing-machine",
+        "device_class": SensorDeviceClass.ENUM,
+        "state_class": None,
+        "unit": None,
+        "description": "Current program phase"
+    },
+    "w_m_status": {
+        "key": StatusKey.W_M_MACHINE_STATUS,
+        "name": "Washing machine status",
+        "icon": "mdi:washing-machine",
+        "device_class": SensorDeviceClass.ENUM,
+        "state_class": None,
+        "unit": None,
+        "description": "Status"
     }
 }
 
@@ -690,7 +717,9 @@ async def async_setup_entry(
                             sensor_info["name"]
                         )
                         # 判断是否是故障传感器
-                        is_fault_sensor = sensor_info["device_class"] == SensorDeviceClass.ENUM
+                        is_fault_sensor = False
+                        if device.type_code != "025":
+                            is_fault_sensor = sensor_info["device_class"] == SensorDeviceClass.ENUM
 
                         # 获取当前值
                         current_value = device.status.get(sensor_info["key"])
@@ -790,7 +819,7 @@ class HisenseSensor(CoordinatorEntity, SensorEntity):
         current_value = device.get_status_value(self._sensor_key)
 
         # 故障传感器特殊处理
-        if self._sensor_info["device_class"] == SensorDeviceClass.ENUM:
+        if self._sensor_info["device_class"] == SensorDeviceClass.ENUM and device.type_code != "025":
             # 当值变为0或无效时移除实体
             if current_value in (None, "0"):
                 _LOGGER.info("Removing fault sensor %s (current value: %s)",

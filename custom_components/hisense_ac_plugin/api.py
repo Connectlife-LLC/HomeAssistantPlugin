@@ -33,7 +33,7 @@ from .devices.base import DeviceAttribute
 from .oauth2 import OAuth2Session
 from .websocket import HisenseWebSocket
 from .devices import get_device_parser, BaseBeanParser, BaseDeviceParser, SplitWater035699Parser, Humidity007Parser, \
-    Split006299Parser
+    Split006299Parser, HisenseWashingMachineParser
 from .models import DeviceInfo, HisenseApiError
 
 _LOGGER = logging.getLogger(__name__)
@@ -495,7 +495,7 @@ class HisenseApiClient:
                 deviceFeatureName = device_data.get("deviceFeatureName")
                 try:
                     device = DeviceInfo(device_data)
-                    supported_device_types = ["009", "008", "007", "006", "016", "035"]
+                    supported_device_types = ["009", "008", "007", "006", "016", "025", "035"]
                     if deviceTypeCode in supported_device_types:
                         devices[device.device_id] = device
                         self._devices[device.device_id] = device
@@ -548,6 +548,10 @@ class HisenseApiClient:
                             self.parsers[device.device_id] = filtered_parser
                         elif isinstance(parser, Split006299Parser):
                             self.parsers[device.device_id] = parser
+                        elif isinstance(parser, HisenseWashingMachineParser):
+                            filtered_parser = self.create_washing_machine_parser(parser, propertyList)
+                            self.parsers[device.device_id] = filtered_parser
+                            _LOGGER.info("Added HisenseWashingMachineParser")
                         else:
                             _LOGGER.error("Parser is not an instance of BaseBeanParser")
                             return
@@ -796,6 +800,55 @@ class HisenseApiClient:
                       new_parser.attributes)
         new_parser._attributes = filtered_attributes
 
+        return new_parser
+
+    @staticmethod
+    def create_washing_machine_parser(base_parser: BaseDeviceParser, propertyList: list) -> HisenseWashingMachineParser:
+        
+        original_attributes = base_parser.attributes
+
+        if not isinstance(original_attributes, dict):
+            _LOGGER.error("original_attributes is not a dictionary: %s", original_attributes)
+            return HisenseWashingMachineParser()
+
+        property_keys = [prop.get('propertyKey') for prop in propertyList if
+                         isinstance(prop, dict) and 'propertyKey' in prop]
+
+        _LOGGER.debug("property_keys content: %s", property_keys)
+
+        if not isinstance(property_keys, (list, set)):
+            _LOGGER.error("property_keys is not a list or set: %s", property_keys)
+            return HisenseWashingMachineParser()
+
+        if any(not isinstance(item, (str, int, float, tuple)) for item in property_keys):
+            _LOGGER.error("property_keys contains unhashable types: %s", property_keys)
+            return HisenseWashingMachineParser()
+
+        filtered_attributes = {}
+        for key in property_keys:
+            if key in original_attributes:
+                attribute = original_attributes[key]
+                for prop in propertyList:
+                    if prop.get('propertyKey') == key:
+                        property_value_list = prop.get('propertyValueList')
+                        if property_value_list:
+                            attribute.value_range = property_value_list
+                            break
+
+                if attribute.value_map:
+                    property_value_list_keys = set(property_value_list.split(','))
+
+                    value_map_keys = set(attribute.value_map.keys())
+
+                    filtered_value_map = {k: attribute.value_map[k] for k in
+                                          value_map_keys.intersection(property_value_list_keys)}
+                    attribute.value_map = filtered_value_map
+
+                filtered_attributes[key] = attribute
+
+
+        new_parser = HisenseWashingMachineParser()
+        new_parser._attributes = filtered_attributes
         return new_parser
 
     async def async_setup_websocket(self) -> None:

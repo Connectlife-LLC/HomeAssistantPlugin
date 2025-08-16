@@ -180,7 +180,9 @@ class StatusKey:
     F_E_TEMPFAULT_REFRIGERANT_INLET_TIP = "f_e_tempfault_refrigerant_inlet_tip"
     F_E_INWATERPUMP_TIP = "f_e_inwaterpump_tip"
     F_E_OUTEEPROM_TIP = "f_e_outeeprom_tip"
-
+    W_M_REMAINING_TIME = "Selected_program_remaining_time_in_minutes"
+    W_M_CURRENT_STATE = "Current_program_phase"
+    W_M_MACHINE_STATUS = "machine_status"
 
 # Operation Modes
 MODE_AUTO = "auto"
@@ -218,6 +220,7 @@ class ACType:
     DEHUMIDIFIER = "dehumidifier"
     DUCKED_TYPE_AC = "ducked_type_ac"
     DHW = "dhw"
+    WASHING_MACHINE = "washing_machine"
 
 @dataclass
 class DeviceConfiguration:

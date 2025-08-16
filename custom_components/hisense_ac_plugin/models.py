@@ -165,7 +165,7 @@ class DeviceInfo:
     def is_devices(self) -> bool:
         """Check if this device type is supported."""
         #009 分体空调 008 窗机 007 除湿机 006 移动空调
-        supported_device_types = ["009", "008", "007", "006", "016", "035"]
+        supported_device_types = ["009", "008", "007", "006", "016", "025", "035"]
         return self.type_code in supported_device_types
     def is_water(self) -> bool:
         """Check if this device type is supported."""
