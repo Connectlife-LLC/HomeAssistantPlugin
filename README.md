@@ -63,7 +63,7 @@ For proper OAuth2 authentication, you need to configure local DNS resolution:
 
 1. Navigate to `C:\Windows\System32\drivers\etc\`
 2. Right-click on the `hosts` file and select "Edit"
-3. Add the following line:
+3. Change `127.0.0.1` with your Home Assistant instance IP and add the following line :
    ```
    127.0.0.1 homeassistant.local
    ```
