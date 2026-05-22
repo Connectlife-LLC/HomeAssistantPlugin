@@ -8,13 +8,17 @@ from typing import Any, cast
 import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_entry_oauth2_flow
+from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.const import CONF_CLIENT_ID, CONF_CLIENT_SECRET
 
 from .const import DOMAIN, OAUTH2_AUTHORIZE, OAUTH2_TOKEN, CLIENT_ID, CLIENT_SECRET
 
 _LOGGER = logging.getLogger(__name__)
 
-OAUTH2_CALLBACK_URL = "http://homeassistant.local:8123/auth/external/callback"
+# Fallback used only when get_url() can't determine the instance URL
+# (e.g. very early startup); resolves on HAOS via mDNS.
+OAUTH2_CALLBACK_PATH = "/auth/external/callback"
+OAUTH2_CALLBACK_URL_FALLBACK = f"http://homeassistant.local:8123{OAUTH2_CALLBACK_PATH}"
 
 class OAuth2Session:
     """OAuth2 session handler."""
@@ -92,8 +96,17 @@ class HisenseOAuth2Implementation(config_entry_oauth2_flow.LocalOAuth2Implementa
 
     @property
     def redirect_uri(self) -> str:
-        """Return the redirect uri."""
-        return OAUTH2_CALLBACK_URL
+        """Return the redirect uri based on the actual HA instance URL.
+
+        Using a hardcoded ``homeassistant.local`` callback only works on HAOS
+        with mDNS; on HA Container, HAOS without mDNS, or instances behind a
+        reverse proxy / Tailscale Funnel it breaks the OAuth setup flow.
+        """
+        try:
+            base = get_url(self.hass, prefer_external=False, allow_internal=True)
+        except NoURLAvailableError:
+            return OAUTH2_CALLBACK_URL_FALLBACK
+        return f"{base}{OAUTH2_CALLBACK_PATH}"
 
     @property
     def name(self) -> str:
