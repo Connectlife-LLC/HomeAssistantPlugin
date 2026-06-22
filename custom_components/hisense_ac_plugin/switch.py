@@ -471,4 +471,4 @@ class HisenseSwitch(CoordinatorEntity, SwitchEntity):
             )
         else:
             # 正常更新状态
-            await self.async_schedule_update_ha_state(True)
+            self.async_schedule_update_ha_state(True) #this is not to be awaited, generates a warning. Bug 2 in issue 28.
