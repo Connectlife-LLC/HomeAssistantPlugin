@@ -269,7 +269,7 @@ class HisenseSwitch(CoordinatorEntity, SwitchEntity):
 
     async def _async_schedule_update(self):
         """异步调度更新实体状态。"""
-        await self.async_schedule_update_ha_state(True)
+        self.async_schedule_update_ha_state(True)
 
     # def _update_entity_name(self):
     #     """根据设备状态动态更新实体名称。"""
@@ -471,4 +471,4 @@ class HisenseSwitch(CoordinatorEntity, SwitchEntity):
             )
         else:
             # 正常更新状态
-            await self.async_schedule_update_ha_state(True)
+            self.async_schedule_update_ha_state(True)
