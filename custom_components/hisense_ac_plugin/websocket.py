@@ -216,7 +216,7 @@ class HisenseWebSocket:
 
             # Step 4: Connect WebSocket
             self._closing = False
-            self._task = self.hass.async_create_task(self._connect_ws())
+            self._task = self.hass.async_create_background_task(self._connect_ws(), "hisense_ac_plugin_websocket")
             _LOGGER.debug("WebSocket connection task created")
 
         except Exception as err:
