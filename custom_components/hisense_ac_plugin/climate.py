@@ -44,6 +44,7 @@ from .coordinator import HisenseACPluginDataUpdateCoordinator
 from .api import HisenseApiClient
 from .models import DeviceInfo as HisenseDeviceInfo
 from .devices import get_device_parser
+from .temperature import resolve_current_temperature
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -125,7 +126,6 @@ class HisenseClimate(CoordinatorEntity, ClimateEntity):
             | ClimateEntityFeature.SWING_MODE
             | ClimateEntityFeature.TURN_ON
             | ClimateEntityFeature.TURN_OFF
-        # | ClimateEntityFeature.PRESET_MODE  # 添加预设模式支持
     )
 
     def __init__(
@@ -168,9 +168,6 @@ class HisenseClimate(CoordinatorEntity, ClimateEntity):
                 self._setup_hvac_modes()
                 self._setup_fan_modes()
                 self._setup_swing_modes()
-                # 预设模式
-                # self._attr_preset_mode = None
-                # self._attr_preset_modes = ["eco", "away", "comfort", "sleep"]
             except Exception as err:
                 _LOGGER.error("Failed to get device parser: %s", err)
                 self._parser = None
@@ -220,6 +217,7 @@ class HisenseClimate(CoordinatorEntity, ClimateEntity):
             else:
                 min_temp = MIN_TEMP
                 max_temp = MAX_TEMP
+            max_temp = min(max_temp, MAX_TEMP)  # cloud API may report higher cap; enforce our limit
             self._attr_temperature_unit = UnitOfTemperature.CELSIUS
         else:
             # 使用第二个范围
@@ -239,13 +237,6 @@ class HisenseClimate(CoordinatorEntity, ClimateEntity):
 
         if not hasattr(self, '_attr_swing_modes'):
             self._attr_swing_modes = [SWING_OFF, SWING_VERTICAL]
-
-    # async def async_set_preset_mode(self, preset_mode: str) -> None:
-    #     """设置预设模式。"""
-    #     if preset_mode not in self.preset_modes:
-    #         raise ValueError(f"Invalid preset mode: {preset_mode}")
-    #     self._attr_preset_mode = preset_mode
-    #     self.async_write_ha_state()
 
     def _setup_hvac_modes(self):
         """Set up available HVAC modes based on device capabilities."""
@@ -373,11 +364,19 @@ class HisenseClimate(CoordinatorEntity, ClimateEntity):
 
     @property
     def current_temperature(self) -> float | None:
-        """Return the current temperature."""
+        """Return the current temperature from the best available source."""
         if not self._device:
             return None
+
+        temp, source = resolve_current_temperature(self._device)
+        if temp is not None:
+            _LOGGER.debug("Resolved current temperature from %s: %s", source, temp)
+            return temp
+
         temp = self._device.get_status_value(StatusKey.TEMPERATURE)
-        return float(temp) if temp else None
+        if temp is not None:
+            return float(temp)
+        return None
 
     @property
     def target_temperature(self) -> float | None:
@@ -475,6 +474,7 @@ class HisenseClimate(CoordinatorEntity, ClimateEntity):
             if FAN_AUTO not in modes and self.hasAuto:
                 modes.append(FAN_AUTO)
         return modes
+
     @property
     def swing_mode(self) -> str | None:
         if time.time() - self._last_command_time < self.wait_time and self._cached_swing_mode is not None:
@@ -522,10 +522,8 @@ class HisenseClimate(CoordinatorEntity, ClimateEntity):
         # 新增逻辑：如果风速模式数量<=1（仅自动模式），则隐藏风速设置
         if len(self._attr_swing_modes) <= 1:
             features &= ~ClimateEntityFeature.SWING_MODE
-        # 根据当前模式决定是否支持目标温度设置
+        # Always expose target temperature so HA automations can use climate.set_temperature.
         current_mode = self.hvac_mode
-        if current_mode not in [HVACMode.COOL, HVACMode.HEAT]:
-            features &= ~ClimateEntityFeature.TARGET_TEMPERATURE
 
         # 在除湿模式下禁止设置风速
         if current_mode == HVACMode.DRY:
@@ -539,12 +537,6 @@ class HisenseClimate(CoordinatorEntity, ClimateEntity):
 
     async def async_set_temperature(self, **kwargs) -> None:
         """Set new target temperature."""
-        # 检查当前模式是否允许设置温度
-        current_mode = self.hvac_mode
-        if current_mode in [HVACMode.FAN_ONLY, HVACMode.DRY, HVACMode.AUTO]:
-            _LOGGER.debug("Temperature setting is not allowed in current mode: %s", current_mode)
-            return
-
         temperature = kwargs.get(ATTR_TEMPERATURE)
         _LOGGER.debug("温度下发: %s: %s", kwargs,temperature)
         if temperature is None:

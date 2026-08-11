@@ -61,7 +61,7 @@ class BaseBeanParser(BaseDeviceParser):
                     name="设置温度",
                     attr_type="Number",
                     step=1,
-                    value_range="16~32,61~90",
+                    value_range="16~30,61~90",
                     read_write="RW"
                 ),
                 "t_fan_speed": DeviceAttribute(
@@ -155,9 +155,42 @@ class BaseBeanParser(BaseDeviceParser):
                     },
                     read_write="RW"
                 ),
+                "t_temp_in": DeviceAttribute(
+                    key="t_temp_in",
+                    name="面板温度",
+                    attr_type="Number",
+                    read_write="R"
+                ),
                 "t_eco": DeviceAttribute(
                     key="t_eco",
                     name="节能模式",
+                    attr_type="Enum",
+                    step=1,
+                    value_range="0,1",
+                    value_map={
+                        "0": "关闭",
+                        "1": "开启"
+                    },
+                    read_write="RW"
+                ),
+                "t_sleep": DeviceAttribute(
+                    key="t_sleep",
+                    name="睡眠模式",
+                    attr_type="Enum",
+                    step=1,
+                    value_range="0,1,2,3,4",
+                    value_map={
+                        "0": "Off",
+                        "1": "General",
+                        "2": "For kid",
+                        "3": "For old",
+                        "4": "For young",
+                    },
+                    read_write="RW"
+                ),
+                "t_purify": DeviceAttribute(
+                    key="t_purify",
+                    name="健康模式",
                     attr_type="Enum",
                     step=1,
                     value_range="0,1",

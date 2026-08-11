@@ -28,20 +28,30 @@ from .const import (
 )
 from .models import DeviceInfo as HisenseDeviceInfo
 from .coordinator import HisenseACPluginDataUpdateCoordinator
+from .temperature import resolve_current_temperature
 
 _LOGGER = logging.getLogger(__name__)
 
 # Define sensor types
 SENSOR_TYPES = {
-    # "indoor_temperature": {
-    #     "key": StatusKey.TEMPERATURE,
-    #     "name": "Indoor Temperature",
-    #     "icon": "mdi:thermometer",
-    #     "device_class": SensorDeviceClass.TEMPERATURE,
-    #     "state_class": SensorStateClass.MEASUREMENT,
-    #     "unit": UnitOfTemperature.CELSIUS,
-    #     "description": "Current indoor temperature"
-    # },
+    "panel_temperature": {
+        "key": "t_temp_in",
+        "name": "面板温度",
+        "icon": "mdi:thermometer",
+        "device_class": SensorDeviceClass.TEMPERATURE,
+        "state_class": SensorStateClass.MEASUREMENT,
+        "unit": UnitOfTemperature.CELSIUS,
+        "description": "Current control panel temperature"
+    },
+    "indoor_temperature": {
+        "key": "f_temp_in",
+        "name": "内机温度",
+        "icon": "mdi:thermometer",
+        "device_class": SensorDeviceClass.TEMPERATURE,
+        "state_class": SensorStateClass.MEASUREMENT,
+        "unit": UnitOfTemperature.CELSIUS,
+        "description": "Current indoor unit temperature"
+    },
     "power_consumption": {
         "key": StatusKey.CONSUMPTION,  # 使用设备特定的键名
         "name": "Power Consumption",
@@ -678,57 +688,45 @@ async def async_setup_entry(
             _LOGGER.debug("Processing device for sensors: %s", device.to_dict())
             if isinstance(device, HisenseDeviceInfo) and device.is_devices():
                 # Add sensors for each supported feature
+                parser = coordinator.api_client.parsers.get(device.device_id)
                 for sensor_type, sensor_info in SENSOR_TYPES.items():
                     # Check if the device supports this attribute
-                    parser = coordinator.api_client.parsers.get(device.device_id)
-                    if device.has_attribute(sensor_info["key"],parser):
-                        if device.status.get("f_zone2_select") == "0" and sensor_type == "f_zone2water_temp2":
+                    if sensor_type == "panel_temperature":
+                        panel_supported = "t_temp_in" in (device.status or {}) or (
+                            parser and "t_temp_in" in getattr(parser, "attributes", {})
+                        )
+                        if not panel_supported:
                             continue
-                        _LOGGER.info(
-                            "Adding  sensor for device    %s: %s",
-                            device.feature_code,
-                            sensor_info["name"]
+                    elif sensor_type == "indoor_temperature":
+                        indoor_supported = "f_temp_in" in (device.status or {}) or (
+                            parser and "f_temp_in" in getattr(parser, "attributes", {})
                         )
-                        # 判断是否是故障传感器
-                        is_fault_sensor = sensor_info["device_class"] == SensorDeviceClass.ENUM
-
-                        # 获取当前值
-                        current_value = device.status.get(sensor_info["key"])
-                        static_data = coordinator.api_client.static_data.get(device.device_id)
-                        _LOGGER.info("获取到静态数据: %s: %s", device.feature_code, static_data)
-                        if static_data is not None:
-                            hasHumidity = static_data.get("f_humidity")
-                            if sensor_info["key"] == StatusKey.FHUMIDITY and hasHumidity != "1":
-                                continue
-
-                        # 故障传感器特殊处理：值为0或None时跳过
-                        if is_fault_sensor:
-                            if current_value is None or current_value == "0":
-                                continue
-                        entity = HisenseSensor(
-                            coordinator,
-                            device,
-                            sensor_type,
-                            sensor_info
-                        )
-                        entities.append(entity)
-                    status_list = device.failed_data
-                    if not status_list:
+                        if not indoor_supported:
+                            continue
+                    elif not device.has_attribute(sensor_info["key"], parser):
                         continue
-                    # 在遍历传感器类型时：
-                    if sensor_type in status_list:  # 仅检查键是否存在
-                        _LOGGER.info(
-                            "添加告警 %s sensor for device: %s",
-                            sensor_info["name"],
-                            device.name
-                        )
-                        entity = HisenseSensor(
-                            coordinator,
-                            device,
-                            sensor_type,
-                            sensor_info
-                        )
-                        entities.append(entity)
+
+                    if device.status.get("f_zone2_select") == "0" and sensor_type == "f_zone2water_temp2":
+                        continue
+
+                    current_value = device.status.get(sensor_info["key"])
+                    static_data = coordinator.api_client.static_data.get(device.device_id)
+                    if static_data is not None:
+                        hasHumidity = static_data.get("f_humidity")
+                        if sensor_info["key"] == StatusKey.FHUMIDITY and hasHumidity != "1":
+                            continue
+
+                    # 故障传感器特殊处理：值为0或None时跳过
+                    if sensor_info["device_class"] == SensorDeviceClass.ENUM and current_value in (None, "0"):
+                        continue
+
+                    entity = HisenseSensor(
+                        coordinator,
+                        device,
+                        sensor_type,
+                        sensor_info
+                    )
+                    entities.append(entity)
             else:
                 _LOGGER.warning(
                     "Skipping unsupported device: %s-%s (%s)",
@@ -825,18 +823,13 @@ class HisenseSensor(CoordinatorEntity, SensorEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        if not super().available:  # 继承父类的可用性检查（设备在线）
-            return False
-        current_mode = self._device.get_status_value(StatusKey.MODE)  # 使用正确键名
-        # 判断自动模式
-        if current_mode in ["3"]:
-            _LOGGER.debug("设备处于自动模式，温度控制不可用")
+        if not super().available:
             return False
         if self._sensor_type == "f_zone2water_temp2":
+            current_mode = self._device.get_status_value(StatusKey.MODE)
             allowed_modes = {"0", "6"}  # 仅允许制热和制热+制热水模式
             if current_mode not in allowed_modes:
                 return False
-
         return True
 
     @property
@@ -844,10 +837,29 @@ class HisenseSensor(CoordinatorEntity, SensorEntity):
         """Return the sensor value."""
         if not self._device:
             return None
+
+        if self._sensor_type == "panel_temperature":
+            raw = self._device.get_status_value("t_temp_in")
+            if raw is None:
+                return None
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                return None
+
+        if self._sensor_type == "indoor_temperature":
+            raw = self._device.get_status_value("f_temp_in")
+            if raw is None:
+                return None
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                return None
+
         value = self._device.get_status_value(self._sensor_key)
         if value is None:
             return None
-            
+
         try:
             # Convert to float for numeric sensors
             if self._attr_device_class in [

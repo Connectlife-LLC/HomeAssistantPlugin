@@ -114,7 +114,9 @@ class StatusKey:
     QUIET = "t_fan_mute"  # Changed to match actual API response
     RAPID = "t_super"  # Changed to match actual API response
     EIGHTHEAT = "t_8heat"  # 8°加热
-    ECO = "t_eco"  # 8°加热
+    ECO = "t_eco"
+    SLEEP = "t_sleep"
+    PURIFY = "t_purify"
     EIGHT_HEAT = "t_8_heat"
     ENERGY = "f_electricity"  # Changed to match actual API response
     WATER_TEMP = "t_water_temp"
