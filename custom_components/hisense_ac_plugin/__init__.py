@@ -97,6 +97,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         coordinator = hass.data[DOMAIN][entry.entry_id]
+        # Closes the websocket and cancels its reconnect task. Without this the
+        # socket outlived the entry, so every reload left another one running.
+        await coordinator.async_unload()
         await coordinator.api_client.oauth_session.close()
         hass.data[DOMAIN].pop(entry.entry_id)
 
