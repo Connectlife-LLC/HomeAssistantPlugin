@@ -10,6 +10,7 @@ import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .const import DOMAIN
 from .models import ApiClientProtocol, NotificationInfo
 
 _LOGGER = logging.getLogger(__name__)
@@ -178,7 +179,13 @@ class HisenseWebSocket:
             _LOGGER.error("WebSocket listener error: %s", err)
         finally:
             if not self._closing and self._fail_count < self._max_fails:
-                self.hass.loop.create_task(self._delayed_reconnect())
+                # Keep the handle on self._task so async_disconnect() can cancel a
+                # pending reconnect. hass.loop.create_task() left it unreachable, so
+                # a reconnect scheduled here outlived disconnect and kept the socket
+                # coming back after unload.
+                self._task = self.hass.async_create_background_task(
+                    self._delayed_reconnect(), name=f"{DOMAIN} websocket reconnect"
+                )
 
     async def _delayed_reconnect(self) -> None:
         """Handle reconnection with delay."""
@@ -216,7 +223,13 @@ class HisenseWebSocket:
 
             # Step 4: Connect WebSocket
             self._closing = False
-            self._task = self.hass.async_create_task(self._connect_ws())
+            # Must be a background task: _connect_ws() ends in _listen(), which runs
+            # for the lifetime of the connection. async_create_task() is tracked by
+            # async_block_till_done(), so startup would wait on a task that never
+            # finishes and only give up when bootstrap times out.
+            self._task = self.hass.async_create_background_task(
+                self._connect_ws(), name=f"{DOMAIN} websocket"
+            )
             _LOGGER.debug("WebSocket connection task created")
 
         except Exception as err:
